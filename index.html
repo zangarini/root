@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cifras do Novo Cântico</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16x16.png">
+    <link rel="manifest" href="img/site.webmanifest">
+    <link rel="mask-icon" href="img/safari-pinned-tab.svg" color="#000000">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+    <style>
+        .abcjs-chord {
+            color: crimson;
+        }
+
+        .abcjs-container {
+            cursor: pointer;
+        }
+
+        .abcjs-tempo {
+            display: none;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/abcjs/6.4.1/abcjs-basic.js"></script>
+    <script>
+        var bases = ["Ab", "Bb", "Csharp", "Eb", "Fsharp", "A", "B", "C", "D", "E", "F", "G"];
+        var abc;
+        var resultado;
+        var midiBuffer;
+
+        function load() {
+            document.getElementById("seletor-hino").addEventListener("change", escolherHino);
+            document.getElementById("seletor-transposicao").addEventListener("change", transporHino);
+            document.getElementById("seletor-formato").addEventListener("change", escolherHino);
+            document.getElementsByTagName("button")[0].addEventListener("click", function () { reproduzirMusica(); });
+        }
+
+        function reproduzirMusica() {
+            pararMusica();
+
+            document.getElementsByTagName("button")[0].style.display = "inline-block";
+
+            window.AudioContext = window.AudioContext ||
+                window.webkitAudioContext ||
+                navigator.mozAudioContext ||
+                navigator.msAudioContext;
+
+            let audioContext = new window.AudioContext();
+
+            audioContext.resume().then(function () {
+                midiBuffer = new ABCJS.synth.CreateSynth();
+
+                return midiBuffer.init({
+                    visualObj: resultado,
+                    audioContext: audioContext,
+                    millisecondsPerMeasure: resultado.millisecondsPerMeasure(),
+                    options: { chordsOff: true, midiTranspose: document.getElementById("seletor-transposicao").value, }
+                }).then(function (response) {
+                    return midiBuffer.prime();
+                }).then(function () {
+                    midiBuffer.start();
+                    return Promise.resolve();
+                }).catch(function (error) {
+                    console.warn("synth error", error);
+                });
+            });
+        }
+
+        function pararMusica() {
+            document.getElementsByTagName("button")[0].style.display = "none";
+
+            if (midiBuffer) {
+                midiBuffer.stop();
+            }
+        }
+
+        function escolherHino() {
+            let id = document.getElementById("seletor-hino").value;
+
+            if (id != "") {
+                if (document.getElementById("seletor-formato").value == "partitura") {
+                    solicitarHino(`https://cdn.jsdelivr.net/gh/savioa/cifras-novo-cantico/abc/${id}.abc`);
+                }
+                else {
+                    solicitarHino(`https://cdn.jsdelivr.net/gh/savioa/cifras-novo-cantico/txt/${id}.txt`);
+                }
+            }
+        }
+
+        function solicitarHino(url) {
+            if (window.XMLHttpRequest) { // Mozilla, Safari, ...
+                httpRequest = new XMLHttpRequest();
+            } else if (window.ActiveXObject) { // IE
+                try {
+                    httpRequest = new ActiveXObject("Msxml2.XMLHTTP");
+                }
+                catch (e) {
+                    try {
+                        httpRequest = new ActiveXObject("Microsoft.XMLHTTP");
+                    }
+                    catch (e) { }
+                }
+            }
+
+            if (!httpRequest) {
+                alert("Não foi possível montar a requisição.");
+                return false;
+            }
+
+            httpRequest.onreadystatechange = carregarHino;
+            httpRequest.open("GET", url);
+            httpRequest.send();
+        }
+
+        function carregarHino() {
+            if (httpRequest.readyState === 4) {
+                if (httpRequest.status === 200) {
+                    document.getElementById("acordes").innerHTML = "";
+
+                    pararMusica();
+
+                    if (document.getElementById("seletor-formato").value == "partitura") {
+                        document.getElementsByTagName("pre")[0].innerHTML = "";
+
+                        abc = httpRequest.responseText;
+                        desenharHino(abc, 0);
+
+                        document.getElementById("seletor-transposicao").removeAttribute("disabled");
+
+                        document.getElementsByTagName("button")[0].scrollIntoView({ behavior: "smooth" });
+                    }
+                    else {
+                        let div = document.createElement("div");
+                        div.setAttribute("id", "paper");
+
+                        document.getElementById("paper").replaceWith(div);
+
+                        document.getElementById("seletor-transposicao").setAttribute("disabled", "");
+
+                        document.getElementsByTagName("pre")[0].innerHTML = httpRequest.responseText;
+
+                        document.getElementsByTagName("pre")[0].scrollIntoView({ behavior: "smooth" });
+                    }
+                } else {
+                    alert("Não foi possível carregar o hino.");
+                }
+
+                document.getElementById("seletor-transposicao").value = "0";
+            }
+        }
+
+        function desenharHino(abc, transposicao) {
+            resultado = ABCJS.renderAbc("paper", abc, { add_classes: true, format: { stafftopmargin: "30", gchordfont: "sans-serif", vocalfont: "sans-serif 12", titlefont: "sans-serif 18", subtitlefont: "sans-serif" }, responsive: "resize", visualTranspose: transposicao })[0];
+
+            let id = document.getElementById("seletor-hino").value;
+
+            document.getElementsByClassName("abcjs-container")[0].addEventListener("click", (e) => { window.open(`https://raw.githubusercontent.com/savioa/cifras-novo-cantico/main/abc/${id}.abc`) });
+
+            if (ABCJS.synth.supportsAudio()) {
+                document.getElementsByTagName("button")[0].style.display = "inline-block";
+            }
+
+            let acordes = [];
+
+            Array.from(document.getElementsByClassName("abcjs-chord")).forEach((e) => {
+                if (!acordes.includes(e.textContent)) {
+                    acordes.push(e.textContent);
+                }
+            });
+
+            acordes.forEach((acorde) => {
+                let acorde_esc = acorde
+                    .replace("♭", "b")
+                    .replace("♯", "sharp")
+                    .replace("/", "_")
+                    .replace("Db", "Csharp")
+                    .replace("Gsharp", "Ab")
+                    .replace("Dsharp", "Eb");
+                let base = "";
+                let sufixo = "";
+
+                bases.forEach((b) => {
+                    if (base == "" && acorde_esc.startsWith(b)) {
+                        base = b;
+                        sufixo = acorde_esc.substring(b.length);
+
+                        if (sufixo == "") {
+                            sufixo = "major";
+                        } else if (sufixo == "m") {
+                            sufixo = "minor";
+                        }
+                    }
+                });
+
+                if (base == "") {
+                    alert(`Acorde ${acorde} não reconhecido.`);
+                    return false;
+                }
+
+                let span = document.createElement("span");
+                span.innerHTML = acorde;
+
+                let img = new Image();
+                img.src = `https://cdn.jsdelivr.net/gh/tombatossals/react-chords@gh-pages/media/guitar/chords/${base}/${sufixo}/1.png`
+                img.style = "max-width:100px;width:100%"
+                span.appendChild(img);
+
+                document.getElementById("acordes").appendChild(span);
+            });
+        }
+
+        function transporHino() {
+            document.getElementById("acordes").innerHTML = "";
+
+            pararMusica();
+
+            desenharHino(abc, document.getElementById("seletor-transposicao").value);
+        }
+    </script>
+</head>
+
+<body onload="load()">
+    <main class="container-fluid">
+        <form>
+            <fieldset class="grid">
+                <label>Hino
+                    <select id="seletor-hino">
+                        <option disabled selected value>--</option>
+                        <optgroup label="Louvor e Adoração - Intróitos">
+                            <option value="1">1 - Doxologia</option>
+                            <option value="2">2 - Reverência</option>
+                        </optgroup>
+                        <optgroup label="Deus Trino">
+                            <option value="3">3 - A igreja em adoração</option>
+                            <option value="4">4 - Culto à Trindade</option>
+                            <option value="5">5 - Trindade adorada (Primeira música)</option>
+                            <option value="5b">5 - Trindade adorada (Segunda música)</option>
+                            <option value="6">6 - Doxologia</option>
+                            <option value="7">7 - Glória à Trindade</option>
+                            <option value="8">8 - Adoração à Trindade</option>
+                            <option value="9">9 - Aleluia ao Deus Trino</option>
+                            <option value="10">10 - A criação e seu Criador</option>
+                        </optgroup>
+                        <optgroup label="Deus Santo">
+                            <option value="11">11 - Trindade santíssima</option>
+                            <option value="12">12 - Glória a Deus</option>
+                            <option value="13">13 - Contemplação</option>
+                            <option value="14">14 - Louvor</option>
+                        </optgroup>
+                        <optgroup label="Deus Soberano">
+                            <option value="15">15 - Doxologia</option>
+                            <option value="16">16 - Louvor a Deus</option>
+                            <option value="17">17 - Deus seja louvado</option>
+                            <option value="18">18 - Deus dos antigos</option>
+                            <option value="19">19 - Rei Sublime</option>
+                            <option value="20">20 - Glorificação à Trindade</option>
+                            <option value="21">21 - Deus de Abraão</option>
+                        </optgroup>
+                        <optgroup label="Deus Criador">
+                            <option value="22">22 - Os céus proclamam (Primeira música)</option>
+                            <option value="22b">22 - Os céus proclamam (Segunda música)</option>
+                            <option value="23">23 - Adoração ao Criador</option>
+                            <option value="24">24 - Convite ao louvor (Primeira música)</option>
+                            <option value="24b">24 - Convite ao louvor (Segunda música)</option>
+                            <option value="25">25 - O Criador de tudo</option>
+                            <option value="26">26 - Ao Deus grandioso</option>
+                            <option value="27">27 - Um hino ao Senhor</option>
+                            <option value="28">28 - Coroação</option>
+                            <option value="29">29 - Louvor</option>
+                        </optgroup>
+                        <optgroup label="Deus Providente">
+                            <option value="30">30 - Providência de Deus (na criação)</option>
+                            <option value="31">31 - Providência de Deus (na redenção)</option>
+                        </optgroup>
+                        <optgroup label="Deus Fiel">
+                            <option value="32">32- O Deus fiel</option>
+                            <option value="33">33 - Maravilhas divinas</option>
+                            <option value="34">34 - Convite ao louvor</option>
+                        </optgroup>
+                        <optgroup label="Jesus Senhor">
+                            <option value="35">35 - Adoração e súplica</option>
+                            <option value="36">36 - Exaltação</option>
+                            <option value="37">37 - O Santo Nome (Primeira música)</option>
+                            <option value="37b">37 - O Santo Nome (Segunda música)</option>
+                        </optgroup>
+                        <optgroup label="Jesus Salvador">
+                            <option value="38">38 - Louvores sem fim</option>
+                            <option value="39">39 - Exaltação e louvor</option>
+                            <option value="40">40 - Cântico ao Salvador</option>
+                            <option value="41">41 - Louvor pela graça divina</option>
+                            <option value="42">42 - O grande amor de Deus</option>
+                            <option value="43">43 - O Deus de amor</option>
+                            <option value="44">44 - Louvores ao Senhor</option>
+                            <option value="45">45 - Grande redenção</option>
+                            <option value="46">46 - Altos louvores</option>
+                            <option value="47">47 - Louvor e glória</option>
+                            <option value="48">48 - Amor e gratidão</option>
+                        </optgroup>
+                        <optgroup label="Jesus Vencedor">
+                            <option value="49">49 - Sempre vencendo</option>
+                            <option value="50">50 - Sangue precioso</option>
+                            <option value="51">51 - Cristo coroado</option>
+                            <option value="52">52 - Glória e Coroação</option>
+                            <option value="53">53 - Honra, Poder, Majestade (Primeira música)</option>
+                            <option value="53b">53 - Honra, Poder, Majestade (Segunda música)</option>
+                            <option value="54">54 - A Chegada do Messias</option>
+                        </optgroup>
+                        <optgroup label="Gratidão">
+                            <option value="56">56 - Ações de Graças e Súplicas (Primeira música)</option>
+                            <option value="56b">56 - Ações de Graças e Súplicas (Segunda música)</option>
+                        </optgroup>
+                        <optgroup label="Ofertórios e Améns">
+                            <option value="400b">400 B - Amém tríplice</option>
+                            <option value="400c">400 C - Amém quádruplo</option>
+                            <option value="400d">400 D - Amém sétuplo</option>
+                        </optgroup>
+                    </select>
+                </label>
+            </fieldset>
+            <fieldset class="grid">
+                <label>Formato
+                    <select id="seletor-formato">
+                        <option value="partitura">Partitura com cifra</option>
+                        <option value="cifra">Cifra</option>
+                    </select>
+                </label>
+                <label>Transposição
+                    <select id="seletor-transposicao" disabled>
+                        <option value="6">+6 semitom</option>
+                        <option value="5">+5 semitom</option>
+                        <option value="4">+4 semitom</option>
+                        <option value="3">+3 semitom</option>
+                        <option value="2">+2 semitom</option>
+                        <option value="1">+1 semitom</option>
+                        <option value="0" selected></option>
+                        <option value="-1">-1 semitom</option>
+                        <option value="-2">-2 semitom</option>
+                        <option value="-3">-3 semitom</option>
+                        <option value="-4">-4 semitom</option>
+                        <option value="-5">-5 semitom</option>
+                    </select>
+                </label>
+            </fieldset>
+        </form>
+        <button style="display: none;">Reproduzir</button>
+        <div id="paper"></div>
+        <div id="acordes"></div>
+        <pre></pre>
+        <hr>
+        <p style="text-align: center;">Encontrou um erro? Por favor, <a
+                href="https://github.com/savioa/cifras-novo-cantico/issues">avise-nos</a>. Este projeto é mantido no <a
+                href="https://github.com/savioa/cifras-novo-cantico">GitHub</a>.</p>
+    </main>
+</body>
+
+</html>
